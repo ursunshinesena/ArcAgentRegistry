@@ -17,8 +17,9 @@ async function StatsStrip({ totalAgents }: StatsProps) {
   }
 
   const holdersCount = stats?.holders_count ?? "—";
-  // Sync the 'Registered Agents' count with the actual data length provided by the user
-  const displayTotal = totalAgents ?? stats?.total_supply ?? "—";
+  // Display the total registered agents using totalAgents (fetched actual agents count)
+  // Fall back to holders_count if the data is missing. On-chain total_supply returns null for this ERC721.
+  const displayTotal = totalAgents ?? stats?.holders_count ?? "—";
 
   return (
     <div className="stats-bar" role="region" aria-label="Registry statistics">

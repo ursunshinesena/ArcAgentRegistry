@@ -130,13 +130,13 @@ export async function fetchAgents(
 /**
  * Fetch ALL registered agents by chaining every page.
  * Runs on the server; results are cached (revalidate: 60s).
- * Cap = 20 pages (1000 agents) as a safety limit.
+ * Cap = 200 pages (10000 agents) as a safety limit.
  */
 export async function fetchAllAgents(): Promise<AgentInstance[]> {
   const all: AgentInstance[] = [];
   let cursor: number | undefined;
   let page = 0;
-  const MAX_PAGES = 20;
+  const MAX_PAGES = 200;
 
   do {
     const data = await fetchAgents(cursor);
