@@ -142,10 +142,15 @@ export async function fetchAllAgents(): Promise<AgentInstance[]> {
   const MAX_PAGES = 200;
 
   do {
-    const data = await fetchAgents(cursor);
-    all.push(...data.items);
-    cursor = data.next_page_params?.unique_token ?? undefined;
-    page++;
+    try {
+      const data = await fetchAgents(cursor);
+      all.push(...data.items);
+      cursor = data.next_page_params?.unique_token ?? undefined;
+      page++;
+    } catch (err) {
+      console.error("ArcScan API error during pagination:", err);
+      break; // Stop fetching, but return what we have so far
+    }
   } while (cursor && page < MAX_PAGES);
 
   return all;
@@ -237,15 +242,20 @@ async function fetchAllTxsForAddress(
 
   do {
     const url = `${ARCSCAN_BASE}/addresses/${address}/transactions?filter=to${nextParams}`;
-    const res = await fetch(url, { next: { revalidate: 30 } }); // Lower revalidate for tests
-    if (!res.ok) break;
-    const data: PaginatedTxs = await res.json();
-    all.push(...data.items);
-    if (data.next_page_params) {
-      const p = data.next_page_params as Record<string, string | number>;
-      nextParams = "&" + Object.entries(p).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
-    } else {
-      nextParams = "";
+    try {
+      const res = await fetch(url, { next: { revalidate: 30 } }); // Lower revalidate for tests
+      if (!res.ok) break;
+      const data: PaginatedTxs = await res.json();
+      all.push(...data.items);
+      if (data.next_page_params) {
+        const p = data.next_page_params as Record<string, string | number>;
+        nextParams = "&" + Object.entries(p).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+      } else {
+        nextParams = "";
+      }
+    } catch (err) {
+      console.error(`Error fetching txs for ${address}:`, err);
+      break;
     }
     page++;
   } while (nextParams && page < maxPages);
@@ -264,22 +274,27 @@ async function fetchAllLogs(
 
   do {
     const url = `${ARCSCAN_BASE}/addresses/${address}/logs?${nextParams}`;
-    const res = await fetch(url, { next: { revalidate: 30 } });
-    if (!res.ok) break;
-    const data = await res.json();
+    try {
+      const res = await fetch(url, { next: { revalidate: 30 } });
+      if (!res.ok) break;
+      const data = await res.json();
 
-    // Normalize timestamps for logs from block_timestamp to timestamp for consistency
-    const items = (data.items || []).map((item: any) => ({
-      ...item,
-      timestamp: item.block_timestamp || item.timestamp
-    }));
+      // Normalize timestamps for logs from block_timestamp to timestamp for consistency
+      const items = (data.items || []).map((item: any) => ({
+        ...item,
+        timestamp: item.block_timestamp || item.timestamp
+      }));
 
-    all.push(...items);
-    if (data.next_page_params) {
-      const p = data.next_page_params as Record<string, string | number>;
-      nextParams = Object.entries(p).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
-    } else {
-      nextParams = "";
+      all.push(...items);
+      if (data.next_page_params) {
+        const p = data.next_page_params as Record<string, string | number>;
+        nextParams = Object.entries(p).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+      } else {
+        nextParams = "";
+      }
+    } catch (err) {
+      console.error(`Error fetching logs for ${address}:`, err);
+      break;
     }
     page++;
   } while (nextParams && page < maxPages);
