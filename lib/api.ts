@@ -117,7 +117,7 @@ export async function fetchAgents(
   }
 
   const res = await fetch(url.toString(), {
-    next: { revalidate: 300 },
+    next: { revalidate: 3600 },
   });
 
   if (!res.ok) {
@@ -127,39 +127,41 @@ export async function fetchAgents(
   return res.json();
 }
 
-async function fetchPageWithRetry(cursor: number | undefined, maxRetries = 2): Promise<AgentInstance[]> {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+async function fetchPageWithRetry(cursor: number | undefined): Promise<AgentInstance[]> {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const data = await fetchAgents(cursor);
       return Array.isArray(data.items) ? data.items : [];
     } catch {
-      if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
-      }
+      // retry immediately
     }
   }
   return [];
 }
 
 /**
- * Fetch ALL registered agents in parallel batches of 4 to avoid rate limiting.
+ * Fetch ALL registered agents in parallel batches.
+ * Uses a hard deadline so ISR regeneration always completes within Vercel's timeout.
+ * Individual page responses are cached for 1 hour, so most ISR runs are instant.
  */
 export async function fetchAllAgents(): Promise<AgentInstance[]> {
+  const DEADLINE = Date.now() + 55_000; // 55s hard budget (Vercel Pro = 60s, Hobby = 10s)
+  const BATCH_SIZE = 8;
+
   try {
     const totalCount = await fetchTotalAgentCount();
     if (totalCount === 0) return [];
 
     const pageSize = 50;
     const cursors: (number | undefined)[] = [undefined];
-
     for (let id = totalCount - pageSize + 1; id > 0; id -= pageSize) {
       cursors.push(id);
     }
 
     const allItems: AgentInstance[] = [];
-    const BATCH_SIZE = 4;
 
     for (let i = 0; i < cursors.length; i += BATCH_SIZE) {
+      if (Date.now() > DEADLINE) break;
       const batch = cursors.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(batch.map(c => fetchPageWithRetry(c)));
       for (const items of results) {

@@ -2,6 +2,9 @@ import { Suspense } from "react";
 import { fetchAllAgents, fetchRegistryStats, fetchValidatedAgentTags, fetchTotalAgentCount } from "@/lib/api";
 import RegistryClient from "./RegistryClient";
 
+export const maxDuration = 60;
+export const revalidate = 300;
+
 // ─── Stats Strip (fetches its own count independently) ───────────────────────
 
 async function StatsStrip() {
