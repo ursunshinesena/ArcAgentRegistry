@@ -1,6 +1,3 @@
-import { StagedRenderingController } from "next/dist/server/app-render/staged-rendering";
-import { send } from "process";
-
 const ARCSCAN_BASE = "https://testnet.arcscan.app/api/v2";
 
 export const IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
