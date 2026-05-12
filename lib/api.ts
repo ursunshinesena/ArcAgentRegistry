@@ -1,3 +1,6 @@
+import { StagedRenderingController } from "next/dist/server/app-render/staged-rendering";
+import { send } from "process";
+
 const ARCSCAN_BASE = "https://testnet.arcscan.app/api/v2";
 
 export const IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
@@ -117,7 +120,7 @@ export async function fetchAgents(
   }
 
   const res = await fetch(url.toString(), {
-    next: { revalidate: 30 },
+    next: { revalidate: 60 },
   });
 
   if (!res.ok) {
@@ -125,24 +128,6 @@ export async function fetchAgents(
   }
 
   return res.json();
-}
-
-/**
- * Fetch the total number of registered agents.
- * Since token IDs are sequential (minted 1, 2, 3...), the highest token ID
- * on the first page equals the total number of agents ever registered.
- * This is a fast single-request call, no pagination needed.
- */
-export async function fetchTotalAgentCount(): Promise<number> {
-  const res = await fetch(
-    `${ARCSCAN_BASE}/tokens/${IDENTITY_REGISTRY}/instances`,
-    { next: { revalidate: 30 } }
-  );
-  if (!res.ok) return 0;
-  const data: PaginatedAgents = await res.json();
-  if (!data.items || data.items.length === 0) return 0;
-  // The first item is the newest token (highest ID = total minted)
-  return Number(data.items[0].id);
 }
 
 /**
@@ -201,7 +186,7 @@ export async function fetchAgentsByOwner(
 
   const data = await res.json();
   const items = (data.items ?? []) as AgentInstance[];
-  
+
   // Client-side filter for Identity Registry
   return items.filter(
     (item) => item.token?.address_hash?.toLowerCase() === IDENTITY_REGISTRY.toLowerCase()
@@ -282,13 +267,13 @@ async function fetchAllLogs(
     const res = await fetch(url, { next: { revalidate: 30 } });
     if (!res.ok) break;
     const data = await res.json();
-    
+
     // Normalize timestamps for logs from block_timestamp to timestamp for consistency
     const items = (data.items || []).map((item: any) => ({
       ...item,
       timestamp: item.block_timestamp || item.timestamp
     }));
-    
+
     all.push(...items);
     if (data.next_page_params) {
       const p = data.next_page_params as Record<string, string | number>;
@@ -322,11 +307,11 @@ export async function fetchReputationSummary(agentId: string): Promise<Reputatio
       // The event is typically "NewFeedback" or similar
       const method = log.decoded.method_call.toLowerCase();
       if (!method.includes("feedback")) continue;
-      
+
       const params = log.decoded.parameters;
       const aid = params.find((p: any) => p.name === "agentId");
       if (Number(aid?.value) !== agentIdNum) continue;
-      
+
       count++;
       // Score value
       const val = params.find((p: any) => p.name === "value")?.value;
@@ -432,7 +417,7 @@ export async function fetchAgentActivity(agentId: string): Promise<AgentActivity
     // 1. Validation Logs (Requests & Responses) - increase to 5 pages for activity
     const valLogs = await fetchAllLogs(VALIDATION_REGISTRY, 5);
     const agentForHash = new Map<string, number>();
-    
+
     // First pass to map requestHash -> agentId
     for (const log of valLogs) {
       if (!log.decoded) continue;
@@ -447,34 +432,34 @@ export async function fetchAgentActivity(agentId: string): Promise<AgentActivity
       if (!log.decoded) continue;
       const method = log.decoded.method_call.toLowerCase();
       const p = log.decoded.parameters;
-      
+
       if (method.includes("validationrequest")) {
         const a = p.find((x: any) => x.name === "agentId");
         if (Number(a?.value) !== agentIdNum) continue;
-        activities.push({ 
-          hash: log.transaction_hash, 
-          method: "Validation Request", 
-          registry: "validation", 
-          timestamp: log.timestamp, 
-          status: "success", 
-          from: (p.find((x: any) => x.name === "validatorAddress")?.value ?? p.find((x: any) => x.name === "validator")?.value ?? "") as string 
+        activities.push({
+          hash: log.transaction_hash,
+          method: "Validation Request",
+          registry: "validation",
+          timestamp: log.timestamp,
+          status: "success",
+          from: (p.find((x: any) => x.name === "validatorAddress")?.value ?? p.find((x: any) => x.name === "validator")?.value ?? "") as string
         });
       } else if (method.includes("validationresponse")) {
         const h = p.find((x: any) => x.name === "requestHash");
         const a = p.find((x: any) => x.name === "agentId");
-        
+
         const aid = a ? Number(a.value) : (h ? agentForHash.get(h.value as string) : undefined);
         if (aid !== agentIdNum) continue;
 
-        activities.push({ 
-          hash: log.transaction_hash, 
-          method: "Validation Response", 
-          registry: "validation", 
-          timestamp: log.timestamp, 
-          status: "success", 
+        activities.push({
+          hash: log.transaction_hash,
+          method: "Validation Response",
+          registry: "validation",
+          timestamp: log.timestamp,
+          status: "success",
           from: (p.find((x: any) => x.name === "validatorAddress")?.value ?? p.find((x: any) => x.name === "validator")?.value ?? "") as string,
-          score: Number(p.find((x: any) => x.name === "response")?.value ?? 0), 
-          tag: (p.find((x: any) => x.name === "tag")?.value as string) ?? "" 
+          score: Number(p.find((x: any) => x.name === "response")?.value ?? 0),
+          tag: (p.find((x: any) => x.name === "tag")?.value as string) ?? ""
         });
       }
     }
@@ -488,15 +473,15 @@ export async function fetchAgentActivity(agentId: string): Promise<AgentActivity
 
       const p = log.decoded.parameters;
       if (Number(p.find((x: any) => x.name === "agentId")?.value) !== agentIdNum) continue;
-      activities.push({ 
-        hash: log.transaction_hash, 
-        method: "Reputation Feedback", 
-        registry: "reputation", 
-        timestamp: log.timestamp, 
-        status: "success", 
+      activities.push({
+        hash: log.transaction_hash,
+        method: "Reputation Feedback",
+        registry: "reputation",
+        timestamp: log.timestamp,
+        status: "success",
         from: (p.find((x: any) => x.name === "clientAddress")?.value ?? p.find((x: any) => x.name === "from")?.value ?? "") as string,
-        score: Number(p.find((x: any) => x.name === "value")?.value ?? 0), 
-        tag: (p.find((x: any) => x.name === "tag1")?.value as string) ?? "" 
+        score: Number(p.find((x: any) => x.name === "value")?.value ?? 0),
+        tag: (p.find((x: any) => x.name === "tag1")?.value as string) ?? ""
       });
     }
   } catch { /* silently fail */ }
@@ -513,9 +498,9 @@ interface ValidationMaps {
 }
 
 async function fetchValidationMaps(): Promise<ValidationMaps> {
-  const agentForHash   = new Map<string, number>();
+  const agentForHash = new Map<string, number>();
   const responseForHash = new Map<string, number>();
-  const tagForHash     = new Map<string, string>();
+  const tagForHash = new Map<string, string>();
 
   const logs = await fetchAllLogs(VALIDATION_REGISTRY, 3);
 
@@ -525,21 +510,21 @@ async function fetchValidationMaps(): Promise<ValidationMaps> {
     const params = log.decoded.parameters ?? [];
 
     if (method.includes("validationrequest")) {
-      const hashParam  = params.find((p: any) => p.name === "requestHash");
+      const hashParam = params.find((p: any) => p.name === "requestHash");
       const agentParam = params.find((p: any) => p.name === "agentId");
       if (hashParam && agentParam) {
         agentForHash.set(hashParam.value as string, Number(agentParam.value));
       }
     } else if (method.includes("validationresponse")) {
-      const hashParam     = params.find((p: any) => p.name === "requestHash");
-      const agentParam    = params.find((p: any) => p.name === "agentId");
+      const hashParam = params.find((p: any) => p.name === "requestHash");
+      const agentParam = params.find((p: any) => p.name === "agentId");
       const responseParam = params.find((p: any) => p.name === "response");
-      const tagParam      = params.find((p: any) => p.name === "tag");
-      
+      const tagParam = params.find((p: any) => p.name === "tag");
+
       if (hashParam && agentParam) {
         agentForHash.set(hashParam.value as string, Number(agentParam.value));
       }
-      
+
       if (hashParam && responseParam) {
         responseForHash.set(hashParam.value as string, Number(responseParam.value));
         if (tagParam?.value) {
@@ -597,7 +582,7 @@ export async function fetchValidatedAgentTags(): Promise<Record<number, string[]
   try {
     const { agentForHash, responseForHash, tagForHash } = await fetchValidationMaps();
     const scores = new Map<number, { total: number; count: number }>();
-    const tags   = new Map<number, Set<string>>();
+    const tags = new Map<number, Set<string>>();
 
     for (const [hash, response] of responseForHash.entries()) {
       const agentId = agentForHash.get(hash);
@@ -679,7 +664,7 @@ export function agentDisplayName(agent: AgentInstance): string {
 export function agentTypeLabel(agent: AgentInstance): string {
   let type = agent.metadata?.agent_type || agent.metadata?.type;
   if (!type) return "Unknown";
-  
+
   // If the type is a technical URL (like EIP-8004 registration), don't show it as a label
   if (type.startsWith("http") || type.includes("://")) {
     // Check if we have agent_type as a fallback
