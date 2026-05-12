@@ -117,7 +117,7 @@ export async function fetchAgents(
   }
 
   const res = await fetch(url.toString(), {
-    next: { revalidate: 60 },
+    next: { revalidate: 300 },
   });
 
   if (!res.ok) {
@@ -127,44 +127,46 @@ export async function fetchAgents(
   return res.json();
 }
 
+async function fetchPageWithRetry(cursor: number | undefined, maxRetries = 2): Promise<AgentInstance[]> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const data = await fetchAgents(cursor);
+      return Array.isArray(data.items) ? data.items : [];
+    } catch {
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  return [];
+}
+
 /**
- * Fetch ALL registered agents.
- * To bypass Vercel's 10s timeout, we fetch pages in parallel.
- * We calculate cursors based on the total minted count, firing requests in batches.
+ * Fetch ALL registered agents in parallel batches of 4 to avoid rate limiting.
  */
 export async function fetchAllAgents(): Promise<AgentInstance[]> {
   try {
     const totalCount = await fetchTotalAgentCount();
     if (totalCount === 0) return [];
 
-    // The API returns 50 items per page.
     const pageSize = 50;
-    const cursors: (number | undefined)[] = [undefined]; // First page has no cursor
+    const cursors: (number | undefined)[] = [undefined];
 
-    // Mathematically predict the cursors (assuming sequential IDs, deduplicating later)
     for (let id = totalCount - pageSize + 1; id > 0; id -= pageSize) {
       cursors.push(id);
     }
 
     const allItems: AgentInstance[] = [];
-    const BATCH_SIZE = 20; // 20 parallel requests at a time to avoid rate limits
+    const BATCH_SIZE = 4;
 
     for (let i = 0; i < cursors.length; i += BATCH_SIZE) {
       const batch = cursors.slice(i, i + BATCH_SIZE);
-      const promises = batch.map(async (cursor) => {
-        try {
-          const data = await fetchAgents(cursor);
-          return data.items || [];
-        } catch {
-          return []; // Ignore individual page errors
-        }
-      });
-
-      const results = await Promise.all(promises);
-      results.forEach(items => allItems.push(...items));
+      const results = await Promise.all(batch.map(c => fetchPageWithRetry(c)));
+      for (const items of results) {
+        allItems.push(...items);
+      }
     }
 
-    // Deduplicate items just in case there were burned tokens altering the alignment
     const seen = new Set<string>();
     const uniqueItems: AgentInstance[] = [];
     for (const item of allItems) {
@@ -174,10 +176,9 @@ export async function fetchAllAgents(): Promise<AgentInstance[]> {
       }
     }
 
-    // Sort descending by ID
     return uniqueItems.sort((a, b) => Number(b.id) - Number(a.id));
   } catch (err) {
-    console.error("Error in fetchAllAgents parallel execution:", err);
+    console.error("Error in fetchAllAgents:", err);
     return [];
   }
 }
@@ -190,7 +191,7 @@ export async function fetchAgentById(
 ): Promise<AgentInstance> {
   const res = await fetch(
     `${ARCSCAN_BASE}/tokens/${IDENTITY_REGISTRY}/instances/${tokenId}`,
-    { next: { revalidate: 30 } }
+    { next: { revalidate: 120 } }
   );
 
   if (!res.ok) {
@@ -208,7 +209,7 @@ export async function fetchAgentsByOwner(
 ): Promise<AgentInstance[]> {
   const res = await fetch(
     `${ARCSCAN_BASE}/addresses/${address}/nft?type=ERC-721`,
-    { next: { revalidate: 30 } }
+    { next: { revalidate: 120 } }
   );
 
   if (!res.ok) {
@@ -230,7 +231,7 @@ export async function fetchAgentsByOwner(
 export async function fetchRecentRegistrations(): Promise<PaginatedTxs> {
   const res = await fetch(
     `${ARCSCAN_BASE}/addresses/${IDENTITY_REGISTRY}/transactions?filter=to`,
-    { next: { revalidate: 60 } }
+    { next: { revalidate: 300 } }
   );
 
   if (!res.ok) {
@@ -246,7 +247,7 @@ export async function fetchRecentRegistrations(): Promise<PaginatedTxs> {
 export async function fetchRegistryStats(): Promise<TokenInfo> {
   const res = await fetch(
     `${ARCSCAN_BASE}/tokens/${IDENTITY_REGISTRY}`,
-    { next: { revalidate: 60 } }
+    { next: { revalidate: 300 } }
   );
 
   if (!res.ok) {
@@ -269,7 +270,7 @@ async function fetchAllTxsForAddress(
   do {
     const url = `${ARCSCAN_BASE}/addresses/${address}/transactions?filter=to${nextParams}`;
     try {
-      const res = await fetch(url, { next: { revalidate: 30 } }); // Lower revalidate for tests
+      const res = await fetch(url, { next: { revalidate: 120 } }); // Lower revalidate for tests
       if (!res.ok) break;
       const data: PaginatedTxs = await res.json();
       all.push(...data.items);
@@ -301,7 +302,7 @@ async function fetchAllLogs(
   do {
     const url = `${ARCSCAN_BASE}/addresses/${address}/logs?${nextParams}`;
     try {
-      const res = await fetch(url, { next: { revalidate: 30 } });
+      const res = await fetch(url, { next: { revalidate: 120 } });
       if (!res.ok) break;
       const data = await res.json();
 
