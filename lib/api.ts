@@ -20,7 +20,7 @@ export interface AgentMetadata {
   name?: string;
   description?: string;
   image?: string;
-  agent_type?: string;
+  agent_type?: string | string[];
   capabilities?: string[];
   version?: string;
   services?: { endpoint: string; name: string }[];
@@ -703,19 +703,11 @@ export function agentDisplayName(agent: AgentInstance): string {
 
 /** Format agent type label */
 export function agentTypeLabel(agent: AgentInstance): string {
-  let type = agent.metadata?.agent_type || agent.metadata?.type;
+  const raw = agent.metadata?.agent_type || agent.metadata?.type;
+  if (!raw) return "Unknown";
+  const type = Array.isArray(raw) ? raw[0] : raw;
   if (!type) return "Unknown";
-
-  // If the type is a technical URL (like EIP-8004 registration), don't show it as a label
-  if (type.startsWith("http") || type.includes("://")) {
-    // Check if we have agent_type as a fallback
-    if (agent.metadata?.agent_type && !agent.metadata.agent_type.startsWith("http")) {
-      type = agent.metadata.agent_type;
-    } else {
-      return "Unknown";
-    }
-  }
-
+  if (type.startsWith("http") || type.includes("://")) return "Unknown";
   return formatValidationTag(type);
 }
 

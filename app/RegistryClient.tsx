@@ -89,7 +89,8 @@ function matchesSearch(agent: AgentInstance, query: string): boolean {
   const name = (agent.metadata?.name ?? "").toLowerCase();
   const desc = (agent.metadata?.description ?? "").toLowerCase();
   const owner = (agent.owner?.hash ?? "").toLowerCase();
-  const agentType = (agent.metadata?.agent_type ?? "").toLowerCase();
+  const rawAt = agent.metadata?.agent_type;
+  const agentType = (Array.isArray(rawAt) ? rawAt.join(" ") : (rawAt ?? "")).toLowerCase();
   const caps = getCapabilities(agent).join(" ").toLowerCase();
   const displayName = `agent #${id}`;
 
@@ -108,7 +109,8 @@ function matchesType(agent: AgentInstance, type: string): boolean {
   if (type === "All") return true;
   if (type === "Active") return agent.metadata?.active === true;
   const keyword = type.toLowerCase();
-  const agentType = (agent.metadata?.agent_type ?? "").toLowerCase();
+  const rawAt2 = agent.metadata?.agent_type;
+  const agentType = (Array.isArray(rawAt2) ? rawAt2.join(" ") : (rawAt2 ?? "")).toLowerCase();
   const name = (agent.metadata?.name ?? "").toLowerCase();
   const desc = (agent.metadata?.description ?? "").toLowerCase();
   return agentType.includes(keyword) || name.includes(keyword) || desc.includes(keyword);

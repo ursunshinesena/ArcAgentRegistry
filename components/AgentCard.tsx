@@ -89,7 +89,8 @@ interface AgentCardProps {
 export default function AgentCard({ agent, view = "grid", validationTags = [] }: AgentCardProps) {
   const name = agentDisplayName(agent);
   const typeLabel = agentTypeLabel(agent);
-  const tagClass = typeTagClass(agent.metadata?.agent_type);
+  const rawType = agent.metadata?.agent_type;
+  const tagClass = typeTagClass(Array.isArray(rawType) ? rawType[0] : rawType);
   const ownerAddress = agent.owner?.hash ?? "";
 
   return (
