@@ -24,6 +24,11 @@ const BLOCKED_KEYWORDS = [
   "don pablo", "pablo escobar", "escobar", "medellin", "cartel", "cocaine", "nazi"
 ];
 
+function getCapabilities(agent: AgentInstance): string[] {
+  const caps = agent.metadata?.capabilities;
+  return Array.isArray(caps) ? caps : [];
+}
+
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
 function metadataTier(agent: AgentInstance): number {
@@ -85,7 +90,7 @@ function matchesSearch(agent: AgentInstance, query: string): boolean {
   const desc = (agent.metadata?.description ?? "").toLowerCase();
   const owner = (agent.owner?.hash ?? "").toLowerCase();
   const agentType = (agent.metadata?.agent_type ?? "").toLowerCase();
-  const caps = (agent.metadata?.capabilities ?? []).join(" ").toLowerCase();
+  const caps = getCapabilities(agent).join(" ").toLowerCase();
   const displayName = `agent #${id}`;
 
   return (
@@ -160,7 +165,7 @@ export default function RegistryClient({ agents, agentTags = {} }: Props) {
   const ALL_CAPS = useMemo(() => {
     const caps = new Set<string>();
     agents.forEach(a => {
-      (a.metadata?.capabilities || []).forEach(c => {
+      getCapabilities(a).forEach(c => {
         if (c && typeof c === 'string') {
           const val = c.trim();
           // Filter out blocklisted keywords, very short strings, or purely numbers
@@ -205,7 +210,7 @@ export default function RegistryClient({ agents, agentTags = {} }: Props) {
         (a) =>
           matchesSearch(a, query) &&
           matchesType(a, activeType) &&
-          (activeCapability === "All" || (a.metadata?.capabilities || []).some(c => c.toLowerCase() === activeCapability.toLowerCase())) &&
+          (activeCapability === "All" || getCapabilities(a).some(c => typeof c === "string" && c.toLowerCase() === activeCapability.toLowerCase())) &&
           (!verifiedOnly || verifiedIds.has(Number(a.id))) &&
           (!hideSpam || (metadataTier(a) <= 1 || verifiedIds.has(Number(a.id))))
       ),
@@ -593,7 +598,7 @@ export default function RegistryClient({ agents, agentTags = {} }: Props) {
                         <div>
                            <p style={{ margin: '0 0 6px 0', fontSize: '11px', color: '#555', textTransform: 'uppercase', letterSpacing: '1px' }}>Capabilities</p>
                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                             {(agent.metadata?.capabilities || []).map(c => <span key={c} style={{ fontSize: '10px', background: 'rgba(255,255,255,0.05)', color: '#888', padding: '3px 10px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.05)' }}>{formatCapabilityLabel(c)}</span>)}
+                             {getCapabilities(agent).map(c => typeof c === "string" ? <span key={c} style={{ fontSize: '10px', background: 'rgba(255,255,255,0.05)', color: '#888', padding: '3px 10px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.05)' }}>{formatCapabilityLabel(c)}</span> : null)}
                            </div>
                         </div>
                         <div>
