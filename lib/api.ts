@@ -131,29 +131,58 @@ export async function fetchAgents(
 }
 
 /**
- * Fetch ALL registered agents by chaining every page.
- * Runs on the server; results are cached (revalidate: 60s).
- * Cap = 200 pages (10000 agents) as a safety limit.
+ * Fetch ALL registered agents.
+ * To bypass Vercel's 10s timeout, we fetch pages in parallel.
+ * We calculate cursors based on the total minted count, firing requests in batches.
  */
 export async function fetchAllAgents(): Promise<AgentInstance[]> {
-  const all: AgentInstance[] = [];
-  let cursor: number | undefined;
-  let page = 0;
-  const MAX_PAGES = 200;
+  try {
+    const totalCount = await fetchTotalAgentCount();
+    if (totalCount === 0) return [];
 
-  do {
-    try {
-      const data = await fetchAgents(cursor);
-      all.push(...data.items);
-      cursor = data.next_page_params?.unique_token ?? undefined;
-      page++;
-    } catch (err) {
-      console.error("ArcScan API error during pagination:", err);
-      break; // Stop fetching, but return what we have so far
+    // The API returns 50 items per page.
+    const pageSize = 50;
+    const cursors: (number | undefined)[] = [undefined]; // First page has no cursor
+    
+    // Mathematically predict the cursors (assuming sequential IDs, deduplicating later)
+    for (let id = totalCount - pageSize + 1; id > 0; id -= pageSize) {
+      cursors.push(id);
     }
-  } while (cursor && page < MAX_PAGES);
 
-  return all;
+    const allItems: AgentInstance[] = [];
+    const BATCH_SIZE = 20; // 20 parallel requests at a time to avoid rate limits
+
+    for (let i = 0; i < cursors.length; i += BATCH_SIZE) {
+      const batch = cursors.slice(i, i + BATCH_SIZE);
+      const promises = batch.map(async (cursor) => {
+        try {
+          const data = await fetchAgents(cursor);
+          return data.items || [];
+        } catch {
+          return []; // Ignore individual page errors
+        }
+      });
+      
+      const results = await Promise.all(promises);
+      results.forEach(items => allItems.push(...items));
+    }
+
+    // Deduplicate items just in case there were burned tokens altering the alignment
+    const seen = new Set<string>();
+    const uniqueItems: AgentInstance[] = [];
+    for (const item of allItems) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        uniqueItems.push(item);
+      }
+    }
+
+    // Sort descending by ID
+    return uniqueItems.sort((a, b) => Number(b.id) - Number(a.id));
+  } catch (err) {
+    console.error("Error in fetchAllAgents parallel execution:", err);
+    return [];
+  }
 }
 
 /**
