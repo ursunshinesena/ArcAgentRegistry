@@ -1,3 +1,6 @@
+import { StagedRenderingController } from "next/dist/server/app-render/staged-rendering";
+import { send } from "process";
+
 const ARCSCAN_BASE = "https://testnet.arcscan.app/api/v2";
 
 export const IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
@@ -140,7 +143,7 @@ export async function fetchAllAgents(): Promise<AgentInstance[]> {
     // The API returns 50 items per page.
     const pageSize = 50;
     const cursors: (number | undefined)[] = [undefined]; // First page has no cursor
-    
+
     // Mathematically predict the cursors (assuming sequential IDs, deduplicating later)
     for (let id = totalCount - pageSize + 1; id > 0; id -= pageSize) {
       cursors.push(id);
@@ -159,7 +162,7 @@ export async function fetchAllAgents(): Promise<AgentInstance[]> {
           return []; // Ignore individual page errors
         }
       });
-      
+
       const results = await Promise.all(promises);
       results.forEach(items => allItems.push(...items));
     }
@@ -743,4 +746,8 @@ export function formatValidationTag(tag: string): string {
         : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
     )
     .join(" ");
+}
+
+function fetchTotalAgentCount() {
+  throw new Error("Function not implemented.");
 }
