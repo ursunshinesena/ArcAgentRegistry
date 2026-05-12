@@ -117,7 +117,7 @@ export async function fetchAgents(
   }
 
   const res = await fetch(url.toString(), {
-    next: { revalidate: 60 },
+    next: { revalidate: 30 },
   });
 
   if (!res.ok) {
@@ -125,6 +125,24 @@ export async function fetchAgents(
   }
 
   return res.json();
+}
+
+/**
+ * Fetch the total number of registered agents.
+ * Since token IDs are sequential (minted 1, 2, 3...), the highest token ID
+ * on the first page equals the total number of agents ever registered.
+ * This is a fast single-request call, no pagination needed.
+ */
+export async function fetchTotalAgentCount(): Promise<number> {
+  const res = await fetch(
+    `${ARCSCAN_BASE}/tokens/${IDENTITY_REGISTRY}/instances`,
+    { next: { revalidate: 30 } }
+  );
+  if (!res.ok) return 0;
+  const data: PaginatedAgents = await res.json();
+  if (!data.items || data.items.length === 0) return 0;
+  // The first item is the newest token (highest ID = total minted)
+  return Number(data.items[0].id);
 }
 
 /**

@@ -1,25 +1,19 @@
 import { Suspense } from "react";
-import { fetchAllAgents, fetchRegistryStats, fetchValidatedAgentTags } from "@/lib/api";
+import { fetchAllAgents, fetchRegistryStats, fetchValidatedAgentTags, fetchTotalAgentCount } from "@/lib/api";
 import RegistryClient from "./RegistryClient";
 
-// ─── Stats Strip (Client Interface Wrapper) ───────────────────────────────────
+// ─── Stats Strip (fetches its own count independently) ───────────────────────
 
-interface StatsProps {
-  totalAgents?: number;
-}
-
-async function StatsStrip({ totalAgents }: StatsProps) {
-  let stats = null;
-  try {
-    stats = await fetchRegistryStats();
-  } catch {
-    // silently fall back
-  }
+async function StatsStrip() {
+  // Two fast parallel calls — no dependency on the slow fetchAllAgents
+  const [stats, totalCount] = await Promise.all([
+    fetchRegistryStats().catch(() => null),
+    fetchTotalAgentCount().catch(() => 0),
+  ]);
 
   const holdersCount = stats?.holders_count ?? "—";
-  // Display the total registered agents using totalAgents (fetched actual agents count)
-  // Fall back to holders_count if the data is missing. On-chain total_supply returns null for this ERC721.
-  const displayTotal = totalAgents ?? stats?.holders_count ?? "—";
+  // totalCount = highest token ID = total agents minted on-chain
+  const displayTotal = totalCount > 0 ? totalCount.toLocaleString() : (stats?.holders_count ?? "—");
 
   return (
     <div className="stats-bar" role="region" aria-label="Registry statistics">
@@ -72,15 +66,7 @@ async function RegistryContent() {
   ]);
 
   return (
-    <>
-      {/* Stats with the real agent count */}
-      <div style={{ paddingTop: "var(--space-6)" }}>
-        <StatsStrip totalAgents={agents.length} />
-      </div>
-
-      {/* Registry Client */}
-      <RegistryClient agents={agents} agentTags={agentTags} />
-    </>
+    <RegistryClient agents={agents} agentTags={agentTags} />
   );
 }
 
@@ -98,24 +84,33 @@ export default function RegistryPage() {
         </p>
       </div>
 
+      {/* Stats loads fast and independently */}
       <Suspense
         fallback={
-          <div style={{ paddingTop: "var(--space-6)" }}>
-            <div
-              className="stats-bar skeleton"
-              style={{ height: "80px", marginBottom: "var(--space-8)" }}
-              aria-busy="true"
-            />
-            <div className="agent-grid">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="card skeleton"
-                  style={{ height: 200 }}
-                  aria-busy="true"
-                />
-              ))}
-            </div>
+          <div
+            className="stats-bar skeleton"
+            style={{ height: "80px", marginTop: "var(--space-6)", marginBottom: "var(--space-8)" }}
+            aria-busy="true"
+          />
+        }
+      >
+        <div style={{ paddingTop: "var(--space-6)" }}>
+          <StatsStrip />
+        </div>
+      </Suspense>
+
+      {/* Agent grid loads separately (slower, all pages) */}
+      <Suspense
+        fallback={
+          <div className="agent-grid">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div
+                key={i}
+                className="card skeleton"
+                style={{ height: 200 }}
+                aria-busy="true"
+              />
+            ))}
           </div>
         }
       >
