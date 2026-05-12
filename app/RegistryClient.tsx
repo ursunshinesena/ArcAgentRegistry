@@ -160,23 +160,21 @@ export default function RegistryClient({ agents, agentTags = {} }: Props) {
     setMounted(true);
   }, []);
 
-  // Spam Blocklist
   const SPAM_KEYWORDS = ["aa", "narco", "terrorist", "asdf", "test", "capability_1", "capability_2", "capability_3"];
 
-  // Dynamically extract all unique capabilities
   const ALL_CAPS = useMemo(() => {
-    const caps = new Set<string>();
-    agents.forEach(a => {
-      getCapabilities(a).forEach(c => {
-        if (c && typeof c === 'string') {
-          const val = c.trim();
-          // Filter out blocklisted keywords, very short strings, or purely numbers
-          const isSpamText = SPAM_KEYWORDS.includes(val.toLowerCase()) || val.length < 3 || /^\d+$/.test(val);
-          if (!isSpamText) caps.add(val);
-        }
-      });
-    });
-    return ["All", ...Array.from(caps).sort()];
+    const capsSet = new Set<string>();
+    for (const a of (agents ?? [])) {
+      const capabilities = a?.metadata?.capabilities;
+      if (!Array.isArray(capabilities)) continue;
+      for (const c of capabilities) {
+        if (!c || typeof c !== "string") continue;
+        const val = c.trim();
+        const isSpam = SPAM_KEYWORDS.includes(val.toLowerCase()) || val.length < 3 || /^\d+$/.test(val);
+        if (!isSpam) capsSet.add(val);
+      }
+    }
+    return ["All", ...Array.from(capsSet).sort()];
   }, [agents]);
 
   // Derive a Set<number> for quick membership checks
