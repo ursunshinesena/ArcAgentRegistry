@@ -186,21 +186,27 @@ export async function fetchAllAgents(): Promise<AgentInstance[]> {
 }
 
 /**
- * Fetch a single agent instance by token ID.
+ * Fetch a single agent instance by token ID (with 2 retries for testnet reliability).
  */
 export async function fetchAgentById(
   tokenId: string
 ): Promise<AgentInstance> {
-  const res = await fetch(
-    `${ARCSCAN_BASE}/tokens/${IDENTITY_REGISTRY}/instances/${tokenId}`,
-    { next: { revalidate: 120 } }
-  );
-
-  if (!res.ok) {
-    throw new Error(`Agent not found: ${res.status}`);
+  let lastError: Error = new Error("Unknown error");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(
+        `${ARCSCAN_BASE}/tokens/${IDENTITY_REGISTRY}/instances/${tokenId}`,
+        { next: { revalidate: 120 } }
+      );
+      if (!res.ok) throw new Error(`Agent not found: ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Don't retry 404s
+      if (lastError.message.includes("404")) throw lastError;
+    }
   }
-
-  return res.json();
+  throw lastError;
 }
 
 /**
@@ -272,7 +278,7 @@ async function fetchAllTxsForAddress(
   do {
     const url = `${ARCSCAN_BASE}/addresses/${address}/transactions?filter=to${nextParams}`;
     try {
-      const res = await fetch(url, { next: { revalidate: 120 } }); // Lower revalidate for tests
+      const res = await fetch(url, { next: { revalidate: 300 } });
       if (!res.ok) break;
       const data: PaginatedTxs = await res.json();
       all.push(...data.items);
@@ -304,7 +310,7 @@ async function fetchAllLogs(
   do {
     const url = `${ARCSCAN_BASE}/addresses/${address}/logs?${nextParams}`;
     try {
-      const res = await fetch(url, { next: { revalidate: 120 } });
+      const res = await fetch(url, { next: { revalidate: 300 } });
       if (!res.ok) break;
       const data = await res.json();
 
@@ -741,10 +747,16 @@ export function formatValidationTag(tag: string): string {
 }
 
 export async function fetchTotalAgentCount(): Promise<number> {
-  const stats = await fetchRegistryStats();
-  if (stats.total_supply) return Number(stats.total_supply);
-  // Fallback: ilk sayfadaki en yüksek ID'yi al
-  const firstPage = await fetchAgents();
-  if (firstPage.items.length === 0) return 0;
-  return Math.max(...firstPage.items.map((item) => Number(item.id)));
+  try {
+    const stats = await fetchRegistryStats();
+    if (stats.total_supply) return Number(stats.total_supply);
+    // Fallback: ilk sayfadaki en yüksek ID'yi al
+    const firstPage = await fetchAgents();
+    if (!Array.isArray(firstPage.items) || firstPage.items.length === 0) return 0;
+    const ids = firstPage.items.map((item) => Number(item.id)).filter(n => !isNaN(n));
+    if (ids.length === 0) return 0;
+    return Math.max(...ids);
+  } catch {
+    return 0;
+  }
 }
