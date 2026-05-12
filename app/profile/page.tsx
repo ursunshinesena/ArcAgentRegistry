@@ -183,7 +183,8 @@ export default function ProfilePage() {
       const name = (a.metadata?.name ?? "").toLowerCase();
       const desc = (a.metadata?.description ?? "").toLowerCase();
       const caps = (a.metadata?.capabilities ?? []).join(" ").toLowerCase();
-      const type = (a.metadata?.agent_type ?? "").toLowerCase();
+      const rawType = a.metadata?.agent_type;
+      const type = (Array.isArray(rawType) ? rawType.join(" ") : (rawType ?? "")).toLowerCase();
       return name.includes(q) || desc.includes(q) || caps.includes(q) || type.includes(q);
     });
   }, [allAgents, query, mode]);
